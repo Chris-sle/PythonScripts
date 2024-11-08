@@ -11,15 +11,21 @@ current_song_length = 0
 paused_position = 0
 is_paused = False  # Track the pause state
 
-def play_music(start_position=0):
+def play_music(start_position=None):
     """Play music from a specified starting position."""
-    if playlist:
-        track = playlist[current_song_index]
-        pygame.mixer.music.load(track)
-        pygame.mixer.music.play(loops=0, start=start_position)  # Play from the specified position
+    if not playlist:
+        return
         
-        # Update song information
-        update_song_info(track)
+    track = playlist[current_song_index]
+    pygame.mixer.music.load(track)
+
+    if start_position is not None:
+        pygame.mixer.music.play(loops=0, start=start_position)
+    else:
+        pygame.mixer.music.play(loops=0)
+        
+    # Update song information
+    update_song_info(track)
 
 def update_song_info(file_path):
     """Update the song information and track length for the GUI."""
@@ -53,31 +59,32 @@ def unpause_music():
         is_paused = False
 
 def stop_music():
-    """Stop the music and reset the position tracker."""
+    """Stop the music and reset the position tracker and playlist index to start."""
     pygame.mixer.music.stop()
-    global paused_position, is_paused
+    global paused_position, is_paused, current_song_index
     paused_position = 0
-    is_paused = False  # Reset pause state
+    is_paused = False
 
 def add_to_playlist():
     """Add songs to the playlist."""
     files = filedialog.askopenfilenames(filetypes=[("Lydfiler", "*.mp3 *.wav")])
     playlist.extend(files)
     if playlist:
-        play_music()  # Autoplay first song in the playlist
+        play_music()
 
 def next_song():
     """Skip to the next song in the playlist."""
     global current_song_index, paused_position
-    paused_position = 0  # Reset paused position for the next song
-    if playlist:
-        current_song_index = (current_song_index + 1) % len(playlist)
-        play_music()
+    paused_position = 0
+    if not playlist:
+        return
+    current_song_index = (current_song_index + 1) % len(playlist)
+    play_music()
 
 def prev_song():
     """Return to the previous song in the playlist."""
     global current_song_index, paused_position
-    paused_position = 0  # Reset paused position for the previous song
+    paused_position = 0
     if playlist:
         current_song_index = (current_song_index - 1) % len(playlist)
         play_music()
@@ -85,9 +92,10 @@ def prev_song():
 def check_music():
     """Continuously update the song's playback progress and switch when a song ends."""
     update_progress()
-    if not pygame.mixer.music.get_busy() and playlist:
-        next_song()  # Automatically play the next song if the current one ends
-    root.after(1000, check_music)  # Update every second
+    if not pygame.mixer.music.get_busy() and playlist and not is_paused:
+        if current_song_index != len(playlist) - 1:  # Only proceed if there's more to play
+            next_song()
+    root.after(1000, check_music)
 
 def play_song_from(time):
     """Play the current song from a specific time."""
@@ -101,52 +109,68 @@ def update_progress():
 
 def set_position(val):
     """Set the song position to a new time when the progress scale is used."""
-    pos = int(float(val))  # Get the new position in seconds
-    play_song_from(pos)  # Call the play_song_from function to play from the new position
+    pos = int(float(val))
+    if pygame.mixer.music.get_busy():  # Only set position if music is currently playing
+        pygame.mixer.music.set_pos(pos)  # This sets the position without restarting playback
+    else:
+        play_music(start_position=pos)  # If stopped, play from the selected position
+        
+def suppress_auto_update():
+    """Allow the progress bar to update only when manipulated by the user."""
+    progress_scale.bind("<ButtonRelease-1>", lambda event: set_position(progress_scale.get()))
+    progress_scale.bind("<Motion>", lambda event: None)
 
 def set_volume(val):
     """Adjust the playback volume."""
     volume = float(val) / 100
     pygame.mixer.music.set_volume(volume)
 
+# Create the main application window
 root = tk.Tk()
 root.title("Utvidet Mediaspiller")
 
 song_info = tk.StringVar()
 
+# Create the song information label
 song_info_label = tk.Label(root, textvariable=song_info, width=50)
 song_info_label.pack(pady=5)
 
+# Create the progress scale
 progress_scale = tk.Scale(root, orient='horizontal', command=set_position, showvalue=0, length=400)
 progress_scale.pack(pady=5)
 
-add_button = tk.Button(root, text="Legg til Musikk", command=add_to_playlist)
+# Create buttons for controlling the music
+add_button = tk.Button(root, text="Add Music", command=add_to_playlist)
 add_button.pack(pady=1)
 
-play_button = tk.Button(root, text="Spill Musikk", command=play_music)
+play_button = tk.Button(root, text="Play Music", command=play_music)
 play_button.pack(pady=5)
 
 pause_button = tk.Button(root, text="Pause", command=pause_music)
 pause_button.pack(pady=5)
 
-unpause_button = tk.Button(root, text="Gjenoppta", command=unpause_music)
+unpause_button = tk.Button(root, text="Unpause", command=unpause_music)
 unpause_button.pack(pady=5)
 
-stop_button = tk.Button(root, text="Stopp", command=stop_music)
+stop_button = tk.Button(root, text="Stop", command=stop_music)
 stop_button.pack(pady=5)
 
-next_button = tk.Button(root, text="Neste", command=next_song)
+next_button = tk.Button(root, text="Next", command=next_song)
 next_button.pack(pady=5)
 
-prev_button = tk.Button(root, text="Forrige", command=prev_song)
+prev_button = tk.Button(root, text="Previous", command=prev_song)
 prev_button.pack(pady=5)
 
+# Create the volume scale
 volume_scale = tk.Scale(root, from_=0, to=100, orient='horizontal', command=set_volume, label="Volum")
-volume_scale.set(50)
+volume_scale.set(50)  # Set default volume to 50%
 volume_scale.pack(pady=5)
 
-# Start checking music and updating progress
+# Call the method to suppress automatic updates
+suppress_auto_update()
+
+# Start checking the music status
 root.after(1000, check_music)
 
-# Start the Tkinter main loop
+# Run the application
 root.mainloop()

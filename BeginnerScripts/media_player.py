@@ -10,12 +10,13 @@ current_song_index = 0
 current_song_length = 0
 paused_position = 0
 is_paused = False  # Track the pause state
+after_id = None
 
 def play_music(start_position=None):
     """Play music from a specified starting position."""
     if not playlist:
         return
-        
+
     track = playlist[current_song_index]
     pygame.mixer.music.load(track)
 
@@ -23,9 +24,11 @@ def play_music(start_position=None):
         pygame.mixer.music.play(loops=0, start=start_position)
     else:
         pygame.mixer.music.play(loops=0)
-        
+
     # Update song information
     update_song_info(track)
+    # Ensure progress updates are continuously checked
+    start_checking_progress()
 
 def update_song_info(file_path):
     """Update the song information and track length for the GUI."""
@@ -59,11 +62,15 @@ def unpause_music():
         is_paused = False
 
 def stop_music():
-    """Stop the music and reset the position tracker and playlist index to start."""
+    """Stop the music and reset the playback position and state."""
     pygame.mixer.music.stop()
-    global paused_position, is_paused, current_song_index
+    global paused_position, is_paused, after_id
     paused_position = 0
     is_paused = False
+    if after_id is not None:
+        root.after_cancel(after_id)
+        after_id = None
+    progress_scale.set(0)  # Reset progress bar to beginning
 
 def add_to_playlist():
     """Add songs to the playlist."""
@@ -89,13 +96,24 @@ def prev_song():
         current_song_index = (current_song_index - 1) % len(playlist)
         play_music()
 
+def start_checking_progress():
+    """Start or continue checking the playback progress."""
+    global after_id
+    if after_id is not None:
+        root.after_cancel(after_id)  # Cancel any existing scheduled checks
+    after_id = root.after(1000, check_music)
+
 def check_music():
     """Continuously update the song's playback progress and switch when a song ends."""
     update_progress()
     if not pygame.mixer.music.get_busy() and playlist and not is_paused:
-        if current_song_index != len(playlist) - 1:  # Only proceed if there's more to play
-            next_song()
-    root.after(1000, check_music)
+        next_song()
+    
+def update_progress():
+    """Update the progress scale with the current playback position."""
+    if pygame.mixer.music.get_busy():
+        position = pygame.mixer.music.get_pos() // 1000
+        progress_scale.set(position)
 
 def play_song_from(time):
     """Play the current song from a specific time."""
